@@ -1,7 +1,12 @@
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
-import { scrapeWebsite, webSearch, generateObject } from "./lib/orangeslice";
+import {
+  scrapeWebsite,
+  webSearch,
+  generateObject,
+  type WebSearchResult,
+} from "./lib/orangeslice";
 
 // Schema OrangeSlice's AI fills in from the scraped site + competitor SERP.
 const ENRICH_SCHEMA = {
@@ -18,7 +23,14 @@ const ENRICH_SCHEMA = {
     competitorDomains: {
       type: "array",
       items: { type: "string" },
-      description: "3-6 competitor website domains, e.g. example.com",
+      description:
+        "3-6 competitor website domains people would choose INSTEAD of this product (substitutes), e.g. example.com",
+    },
+    complementaryDomains: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "3-6 website domains of products this one COMPLEMENTS — used alongside it, not instead of it (integrations, companion tools), e.g. example.com",
     },
     topicTerms: {
       type: "array",
@@ -27,7 +39,13 @@ const ENRICH_SCHEMA = {
         "4-8 phrases real people use on Reddit when discussing this product space or the problems it solves",
     },
   },
-  required: ["category", "ownKeywords", "competitorDomains", "topicTerms"],
+  required: [
+    "category",
+    "ownKeywords",
+    "competitorDomains",
+    "complementaryDomains",
+    "topicTerms",
+  ],
 };
 
 interface EnrichmentObject {
@@ -36,6 +54,7 @@ interface EnrichmentObject {
   summary?: unknown;
   ownKeywords?: unknown;
   competitorDomains?: unknown;
+  complementaryDomains?: unknown;
   topicTerms?: unknown;
 }
 
@@ -54,8 +73,9 @@ function bareDomain(d: string): string {
     .toLowerCase();
 }
 
-// OrangeSlice enrichment: scrape the site, search for competitors, then have
-// OrangeSlice's AI distill { ownKeywords, competitorDomains, topicTerms }.
+// OrangeSlice enrichment: scrape the site, run two searches (competitors +
+// complementary products), then have OrangeSlice's AI distill
+// { ownKeywords, competitorDomains, complementaryDomains, topicTerms }.
 export const run = internalAction({
   args: { productId: v.id("products") },
   handler: async (ctx, { productId }) => {
@@ -65,11 +85,20 @@ export const run = internalAction({
       const scrape = await scrapeWebsite(product.url);
       const markdown = (scrape.markdown || scrape.data?.[0]?.markdown || "").slice(0, 6000);
       const brand = product.domain.split(".")[0];
-      const serp = await webSearch(`${brand} alternatives competitors review`);
-      const serpText = (serp.results ?? [])
-        .slice(0, 8)
-        .map((r) => `- ${r.title} — ${r.link}${r.snippet ? ` — ${r.snippet}` : ""}`)
-        .join("\n");
+
+      // Two distinct searches: substitutes (compete with us) and complements
+      // (used alongside us). Run concurrently — independent calls.
+      const fmtSerp = (s: { results?: WebSearchResult[] }) =>
+        (s.results ?? [])
+          .slice(0, 8)
+          .map((r) => `- ${r.title} — ${r.link}${r.snippet ? ` — ${r.snippet}` : ""}`)
+          .join("\n");
+      const [competitorSerp, complementSerp] = await Promise.all([
+        webSearch(`${brand} alternatives vs competitors review`),
+        webSearch(`tools and products that work with ${brand} integrations`),
+      ]);
+      const competitorText = fmtSerp(competitorSerp);
+      const complementText = fmtSerp(complementSerp);
 
       const prompt = [
         "Analyze this product so we can find relevant Reddit discussions to engage with honestly.",
@@ -78,10 +107,13 @@ export const run = internalAction({
         "--- Website content (markdown) ---",
         markdown || "(scrape returned no content)",
         "",
-        "--- Web search results for competitors / alternatives ---",
-        serpText || "(no results)",
+        "--- Web search: competitors / alternatives (substitutes — chosen INSTEAD of this product) ---",
+        competitorText || "(no results)",
         "",
-        "Extract the product's own keywords, competitor domains, and the topic terms/phrases people actually use on Reddit when discussing this space.",
+        "--- Web search: complementary / related products (used ALONGSIDE this product) ---",
+        complementText || "(no results)",
+        "",
+        "Extract: the product's own keywords; competitor domains (substitutes); complementary domains (products this one is used alongside / integrates with); and the topic terms/phrases people actually use on Reddit when discussing this space.",
       ].join("\n");
 
       const obj = await generateObject<EnrichmentObject>(prompt, ENRICH_SCHEMA, {
@@ -95,8 +127,12 @@ export const run = internalAction({
         summary: typeof obj.summary === "string" ? obj.summary : undefined,
         ownKeywords: cleanList(obj.ownKeywords),
         competitorDomains: cleanList(obj.competitorDomains).map(bareDomain),
+        complementaryDomains: cleanList(obj.complementaryDomains).map(bareDomain),
         topicTerms: cleanList(obj.topicTerms),
-        enrichmentRaw: { serp: serpText.slice(0, 2000) },
+        enrichmentRaw: {
+          competitorSerp: competitorText.slice(0, 2000),
+          complementSerp: complementText.slice(0, 2000),
+        },
       });
     } catch (e) {
       await ctx.runMutation(internal.products.setError, {

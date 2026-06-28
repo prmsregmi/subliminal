@@ -7,9 +7,9 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
-import { callStructured } from "./lib/anthropic";
+import { callStructured } from "./lib/llm";
 import { newToken } from "./lib/token";
-import { MODEL_DRAFT, MODEL_CRITIC, DEFAULT_DISCLOSURE } from "./constants";
+import { DEFAULT_DISCLOSURE } from "./constants";
 
 const POST_SCHEMA = {
   type: "object",
@@ -33,6 +33,22 @@ interface PostResult {
   body: string;
   rationale: string;
 }
+
+// Craft system prompt for original posts: genuine and reply-worthy, honest about
+// the affiliation (a disclosure line is appended), never a fake persona or hype.
+const POST_SYSTEM = [
+  "You write original Reddit posts for a brand operator who posts HONESTLY. A short disclosure line is appended automatically, so write as a real community member who is upfront about the affiliation — never a fake persona and never manufactured hype. Within that, make it a post people actually want to reply to.",
+  "",
+  "Craft rules:",
+  "- Be a genuine story, question, or observation native to the subreddit. Specific and slightly imperfect beats polished.",
+  "- The product can be the subject, but lead with something real (an experience, a tradeoff, a question) — not a pitch. Concede downsides; they make it credible.",
+  "- No marketing voice, no hype words, no clickbait title. A skeptical-Redditor critic scores salesiness 0–10; aim for 0–3.",
+  "",
+  "Example — r/energydrinks, angle: honest switch story:",
+  'GOOD TITLE: "Switched from coffee to White Monster Ultra for 30 days — the honest good and annoying"',
+  "GOOD BODY: opens on the real experiment, lists genuine downsides (a lot of caffeine first thing, missing the ritual), ends with an open question to the community.",
+  'BAD: "Why White Monster is the best energy drink on the market 🚀" — that\'s an ad, not a post.',
+].join("\n");
 
 // Post-creation mode: operator picks a subreddit + optional angle.
 export const generate = mutation({
@@ -85,7 +101,8 @@ export const run = internalAction({
       ].join("\n");
 
       const r = await callStructured<PostResult>({
-        model: MODEL_DRAFT,
+        role: "draft",
+        system: POST_SYSTEM,
         prompt,
         toolName: "write_post",
         toolDescription: "Write an original Reddit post.",
@@ -94,7 +111,7 @@ export const run = internalAction({
       });
 
       const critic = await callStructured<{ salesiness: number; verdict?: string }>({
-        model: MODEL_CRITIC,
+        role: "critic",
         prompt: `Skeptical Redditor: rate 0..10 how much this post reads like covert marketing for r/${post.subreddit}.\n\nTITLE: ${r.title}\n\nBODY:\n${r.body}\n\n(0 = genuine member, 10 = obvious ad)`,
         toolName: "judge_post",
         toolDescription: "Judge how salesy a Reddit post reads, 0..10.",

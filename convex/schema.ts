@@ -55,6 +55,7 @@ export default defineSchema({
     summary: v.optional(v.string()),
     ownKeywords: v.array(v.string()),
     competitorDomains: v.array(v.string()),
+    complementaryDomains: v.array(v.string()),
     topicTerms: v.array(v.string()),
     disclosureTemplate: v.string(),
     searchesTotal: v.number(),
@@ -81,6 +82,8 @@ export default defineSchema({
     numComments: v.number(),
     createdUtc: v.number(),
     discoveredVia: v.string(),
+    targetTier: v.optional(v.number()), // which target tier surfaced this thread
+    angle: v.optional(v.string()), // the bridge angle for this subreddit
     signals: vSignals,
     baseScore: v.number(),
     relevanceScore: v.number(),
@@ -160,4 +163,33 @@ export default defineSchema({
     name: v.string(),
     createdAt: v.number(),
   }),
+
+  // Curated subreddit catalog, imported from a markdown table
+  // (scripts/import-subreddits.mjs). The discovery layer matches a product to
+  // relevant subreddits here, then pulls their latest posts. The RAG/embedding
+  // column is added in the matching step; this table is name + description only.
+  subreddits: defineTable({
+    name: v.string(), // canonical subreddit name, no "r/" prefix
+    nameLower: v.string(), // lowercased key for idempotent re-import / lookup
+    description: v.string(),
+    // RAG column: OpenAI text-embedding-3-small (1536-d). Optional — when unset,
+    // matching falls back to the full-text search index below.
+    embedding: v.optional(v.array(v.float64())),
+    createdAt: v.number(),
+  })
+    .index("by_name", ["nameLower"])
+    .searchIndex("search_description", { searchField: "description" })
+    .vectorIndex("by_embedding", { vectorField: "embedding", dimensions: 1536 }),
+
+  // Per-product Reddit target list from the targeting skill (Phase 2): ~50
+  // subreddits tiered direct / competitor / indirect / lateral, each with angle
+  // directions a human poster uses to bridge back to the product.
+  targets: defineTable({
+    productId: v.id("products"),
+    subreddit: v.string(),
+    tier: v.number(), // 1 direct, 2 competitor, 3 indirect, 4 lateral
+    reason: v.string(),
+    angles: v.array(v.string()),
+    createdAt: v.number(),
+  }).index("by_product", ["productId"]),
 });

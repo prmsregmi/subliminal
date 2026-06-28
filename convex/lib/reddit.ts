@@ -25,6 +25,13 @@ function userAgent(): string {
   return process.env.REDDIT_USER_AGENT || "web:vibeseed:v0.1.0 (by /u/vibeseed_app)";
 }
 
+// Whether the deployment has Reddit app-only OAuth credentials configured.
+// When absent, discovery falls back to the bundled mock library so the demo
+// still runs end-to-end without live Reddit access.
+export function hasRedditCreds(): boolean {
+  return Boolean(process.env.REDDIT_CLIENT_ID && process.env.REDDIT_CLIENT_SECRET);
+}
+
 export async function getRedditToken(): Promise<string> {
   const id = process.env.REDDIT_CLIENT_ID;
   const secret = process.env.REDDIT_CLIENT_SECRET;
@@ -83,6 +90,29 @@ export async function searchReddit(
   });
   if (!res.ok) {
     throw new Error(`[reddit] search failed ${res.status}: ${await res.text()}`);
+  }
+  const data = (await res.json()) as {
+    data?: { children?: Array<{ kind: string; data: RedditPost }> };
+  };
+  const children = data?.data?.children ?? [];
+  return children.filter((c) => c.kind === "t3").map((c) => c.data);
+}
+
+// Latest posts from a subreddit (the official-API fallback for Apify subreddit
+// discovery). Same RedditPost shape so callers don't care which source ran.
+export async function fetchSubredditNew(
+  token: string,
+  subreddit: string,
+  limit = 25,
+): Promise<RedditPost[]> {
+  const sub = subreddit.replace(/^\/?r\//i, "").trim();
+  const url = new URL(`${OAUTH_BASE}/r/${encodeURIComponent(sub)}/new`);
+  url.searchParams.set("limit", String(limit));
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${token}`, "User-Agent": userAgent() },
+  });
+  if (!res.ok) {
+    throw new Error(`[reddit] /r/${sub}/new failed ${res.status}: ${await res.text()}`);
   }
   const data = (await res.json()) as {
     data?: { children?: Array<{ kind: string; data: RedditPost }> };

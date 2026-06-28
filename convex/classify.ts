@@ -1,9 +1,9 @@
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
-import { callStructured } from "./lib/anthropic";
+import { callStructured } from "./lib/llm";
 import { combineScores } from "./lib/scoring";
-import { MODEL_CLASSIFY, SKIP_RISK_THRESHOLD, MIN_ENGAGE_SCORE } from "./constants";
+import { SKIP_RISK_THRESHOLD, MIN_ENGAGE_SCORE } from "./constants";
 
 const CLASSIFY_SCHEMA = {
   type: "object",
@@ -72,11 +72,17 @@ export const run = internalAction({
         opp.body ? opp.body.slice(0, 1500) : "(no body text)",
         `Score: ${opp.score}, Comments: ${opp.numComments}`,
         "",
+        "Calibration:",
+        "- A genuine question we can actually answer (how to stay awake, which is better X vs Y, why does this happen) → low authenticityRisk, engage.",
+        "- A mild side-effect or 'is this normal?' question (jitters, too sweet, mild dehydration) → low/moderate risk, engage with a genuinely helpful answer.",
+        '- Only treat it as a health scare when there is medical-emergency language (ER, hospital, heart palpitations, "almost killed me") → very HIGH risk, skip.',
+        '- An "is this brand astroturfing / why does every thread shill it?" thread → very HIGH risk, skip; any brand presence confirms the suspicion.',
+        "",
         'Classify this thread and judge whether engaging is worthwhile. Reddit users have a very strong "BS meter" — even soft marketing is detected. Set a HIGH authenticityRisk and responseType "skip" if a product mention here would feel forced or salesy. Only recommend engaging where we can genuinely help.',
       ].join("\n");
 
       const r = await callStructured<ClassifyResult>({
-        model: MODEL_CLASSIFY,
+        role: "classify",
         prompt,
         toolName: "classify_opportunity",
         toolDescription: "Classify a Reddit thread and judge engagement worthiness.",
