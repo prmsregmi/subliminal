@@ -16,6 +16,14 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+function isRedditThreadUrl(url: string): boolean {
+  return /reddit\.com\/r\/[^/]+\/comments\/[^/?#]+/i.test(url);
+}
+
+function redditSubmitUrl(subreddit: string): string {
+  return `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/submit?type=TEXT`;
+}
+
 export default function ActionPage() {
   const { token = "" } = useParams();
   const data = useQuery(api.actionLink.getByToken, { token });
@@ -44,8 +52,10 @@ export default function ActionPage() {
     data.product?.name || data.product?.domain || "your product";
 
   const targetUrl = isPost
-    ? `https://www.reddit.com/r/${data.post.subreddit}/submit`
-    : data.opportunity.url;
+    ? redditSubmitUrl(data.post.subreddit)
+    : isRedditThreadUrl(data.opportunity.url)
+      ? data.opportunity.url
+      : null;
   const targetLabel = isPost
     ? `r/${data.post.subreddit} · new post`
     : `r/${data.opportunity.subreddit} · reply`;
@@ -57,6 +67,10 @@ export default function ActionPage() {
   const hasContent = isPost ? true : !!data.draft;
 
   function openTarget() {
+    if (!targetUrl) {
+      toast.error("This item does not have an exact Reddit thread link.");
+      return;
+    }
     // Open synchronously within the click gesture so popup blockers don't fire,
     // then record the status best-effort.
     window.open(targetUrl, "_blank", "noopener,noreferrer");
@@ -115,6 +129,11 @@ export default function ActionPage() {
             <ExternalLink className="size-4" />
             {isPost ? `Open r/${data.post.subreddit} submit` : "Open Reddit post"}
           </Button>
+          {!isPost && !targetUrl && (
+            <p className="mt-2 text-xs text-amber-700">
+              Exact Reddit thread link is unavailable for this generated item.
+            </p>
+          )}
         </Step>
 
         <Separator />

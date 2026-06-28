@@ -16,16 +16,18 @@
 // subreddit search deep-links that always resolve to genuine, on-topic posts.
 
 import { internalMutation } from "./_generated/server";
-import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { newToken } from "./lib/token";
-import { hasLLMCreds } from "./lib/llm";
 import { MODEL_DRAFT, DEFAULT_DISCLOSURE } from "./constants";
 
 // The only brand the bundled Reddit mock is curated for. Any monsterenergy.com
 // variant triggers mocked discovery; everything else runs real discovery.
 export function isMonsterDomain(domain: string): boolean {
   return /(^|\.)monsterenergy\.com$/i.test(domain) || domain.toLowerCase().includes("monsterenergy");
+}
+
+function isRedditThreadUrl(url: string): boolean {
+  return /reddit\.com\/r\/[^/]+\/comments\/[^/?#]+/i.test(url);
 }
 
 type Classification = "competitor-mention" | "frustrated-user" | "similar-interest" | "general";
@@ -493,47 +495,37 @@ export const seedOpportunity = internalMutation({
       actionToken: newToken(),
       createdAt: Date.now(),
     };
+    const draft = isRedditThreadUrl(url) ? d.draft : undefined;
 
-    if (hasLLMCreds()) {
-      // Live demo: insert a raw "discovered" opportunity and run the real
-      // classify→draft→critic pipeline on it, exactly like a live Reddit result.
-      const oppId = await ctx.db.insert("opportunities", {
-        ...common,
-        relevanceScore: d.baseScore,
-        pipelineStage: "discovered",
-        status: "queued",
+    // The Monster demo is curated so the employee portal reliably has copyable
+    // rows even when the live classifier is stricter than expected.
+    const oppId = await ctx.db.insert("opportunities", {
+      ...common,
+      relevanceScore: d.relevanceScore,
+      classification: d.classification,
+      responseType: d.responseType,
+      authenticityRisk: d.authenticityRisk,
+      recommendation: d.recommendation,
+      reasoning: d.reasoning,
+      pipelineStage: draft ? "drafted" : "scored",
+      status: "queued",
+      scoredAt: Date.now(),
+      draftedAt: draft ? Date.now() : undefined,
+    });
+    if (draft) {
+      await ctx.db.insert("drafts", {
+        opportunityId: oppId,
+        productId,
+        body: draft.body,
+        disclosureLine: disclosure,
+        rationale: draft.rationale,
+        criticScore: draft.criticScore,
+        criticVerdict: "reads as a genuine, disclosed peer comment",
+        regenerated: false,
+        model: MODEL_DRAFT,
+        version: 1,
+        createdAt: Date.now(),
       });
-      await ctx.scheduler.runAfter(0, internal.classify.run, { opportunityId: oppId });
-    } else {
-      // Offline demo (no Anthropic key): write the pre-scored state + disclosed draft.
-      const oppId = await ctx.db.insert("opportunities", {
-        ...common,
-        relevanceScore: d.relevanceScore,
-        classification: d.classification,
-        responseType: d.responseType,
-        authenticityRisk: d.authenticityRisk,
-        recommendation: d.recommendation,
-        reasoning: d.reasoning,
-        pipelineStage: d.draft ? "drafted" : "scored",
-        status: "queued",
-        scoredAt: Date.now(),
-        draftedAt: d.draft ? Date.now() : undefined,
-      });
-      if (d.draft) {
-        await ctx.db.insert("drafts", {
-          opportunityId: oppId,
-          productId,
-          body: d.draft.body,
-          disclosureLine: disclosure,
-          rationale: d.draft.rationale,
-          criticScore: d.draft.criticScore,
-          criticVerdict: "reads as a genuine, disclosed peer comment",
-          regenerated: false,
-          model: MODEL_DRAFT,
-          version: 1,
-          createdAt: Date.now(),
-        });
-      }
     }
 
     if (product) {
@@ -550,6 +542,10 @@ export const seedOpportunity = internalMutation({
 export const seedPosts = internalMutation({
   args: { productId: v.id("products") },
   handler: async (ctx, { productId }) => {
+    const product = await ctx.db.get(productId);
+    const productName = product?.name || "White Monster";
+    const disclosure = DEFAULT_DISCLOSURE.replace(/\{\{product\}\}/g, productName);
+
     for (const post of MONSTER_POSTS) {
       await ctx.db.insert("campaignPosts", {
         productId,
@@ -557,7 +553,7 @@ export const seedPosts = internalMutation({
         angle: post.angle,
         title: post.title,
         body: post.body,
-        disclosureLine: "",
+        disclosureLine: disclosure,
         rationale: post.rationale,
         criticScore: post.criticScore,
         pipelineStage: "ready",

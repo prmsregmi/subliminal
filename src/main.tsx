@@ -19,7 +19,7 @@ createRoot(document.getElementById("root")!).render(
           <Route path="/action/:token" element={<ActionPage />} />
         </Routes>
       </BrowserRouter>
-      <Toaster theme="dark" position="top-right" richColors closeButton />
+      <Toaster theme="light" position="top-right" richColors closeButton />
     </ConvexProvider>
   </StrictMode>,
 );

@@ -184,11 +184,32 @@ export const metrics = query({
       .withIndex("by_product", (q) => q.eq("productId", productId))
       .collect();
     const byTier = [0, 0, 0, 0]; // tiers 1..4
-    for (const t of targets) {
-      if (t.tier >= 1 && t.tier <= 4) byTier[t.tier - 1]++;
+    if (targets.length) {
+      for (const t of targets) {
+        if (t.tier >= 1 && t.tier <= 4) byTier[t.tier - 1]++;
+      }
+    } else {
+      const seenSubreddits = new Set<string>();
+      for (const o of opps) {
+        const key = `${o.subreddit.toLowerCase()}:${o.targetTier ?? o.discoveredVia}`;
+        if (seenSubreddits.has(key)) continue;
+        seenSubreddits.add(key);
+        if (o.targetTier && o.targetTier >= 1 && o.targetTier <= 4) {
+          byTier[o.targetTier - 1]++;
+        } else if (o.discoveredVia.startsWith("own:")) {
+          byTier[0]++;
+        } else if (o.discoveredVia.startsWith("competitor:")) {
+          byTier[1]++;
+        } else if (o.discoveredVia.startsWith("topic:")) {
+          byTier[2]++;
+        } else {
+          byTier[3]++;
+        }
+      }
     }
+    const fallbackTargets = new Set(opps.map((o) => o.subreddit.toLowerCase())).size;
     return {
-      targets: targets.length,
+      targets: targets.length || fallbackTargets,
       byTier,
       discovered: opps.length,
       engage: opps.filter((o) => o.recommendation === "engage").length,
