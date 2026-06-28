@@ -51,10 +51,13 @@ if (!secrets.ORANGESLICE_API_KEY) {
 
 const KEYS = [
   "ORANGESLICE_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
+  "APIFY_TOKEN",
+  "APIFY_REDDIT_ACTOR",
   "REDDIT_CLIENT_ID",
   "REDDIT_CLIENT_SECRET",
   "REDDIT_USER_AGENT",
-  "ANTHROPIC_API_KEY",
 ];
 
 // Local/anonymous deployments need CONVEX_AGENT_MODE=anonymous for CLI commands.

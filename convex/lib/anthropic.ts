@@ -13,6 +13,13 @@ function apiKey(): string {
   return k;
 }
 
+// Whether the deployment can run live Anthropic calls. When present, the demo
+// mock fallback runs the real classify→draft pipeline; when absent, it falls
+// back to pre-seeded drafts so the dashboard still renders end-to-end.
+export function hasAnthropicCreds(): boolean {
+  return Boolean(process.env.ANTHROPIC_API_KEY);
+}
+
 export interface StructuredCallOpts {
   model: string;
   prompt: string;

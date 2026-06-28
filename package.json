@@ -1,5 +1,5 @@
 {
-  "name": "vibeseed",
+  "name": "subliminal",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,6 +8,7 @@
     "dev:convex": "convex dev",
     "dev:vite": "vite",
     "secrets": "node scripts/setup-env.mjs",
+    "import:subreddits": "node scripts/import-subreddits.mjs",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"

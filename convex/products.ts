@@ -2,12 +2,7 @@ import { mutation, query, internalQuery, internalMutation } from "./_generated/s
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { DEFAULT_DISCLOSURE } from "./constants";
-import { competitorTerms } from "./lib/scoring";
-import {
-  MAX_OWN_KEYWORD_QUERIES,
-  MAX_COMPETITOR_QUERIES,
-  MAX_TOPIC_QUERIES,
-} from "./constants";
+import { isMonsterDomain, MONSTER_OPP_COUNT } from "./mock";
 
 function toDomain(rawUrl: string): string {
   let s = rawUrl.trim();
@@ -41,6 +36,7 @@ export const submitProduct = mutation({
       status: "enriching",
       ownKeywords: [],
       competitorDomains: [],
+      complementaryDomains: [],
       topicTerms: [],
       disclosureTemplate: DEFAULT_DISCLOSURE,
       searchesTotal: 0,
@@ -93,42 +89,54 @@ export const saveEnrichment = internalMutation({
     summary: v.optional(v.string()),
     ownKeywords: v.array(v.string()),
     competitorDomains: v.array(v.string()),
+    complementaryDomains: v.array(v.string()),
     topicTerms: v.array(v.string()),
     enrichmentRaw: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     const { productId, ...enrichment } = args;
+    const productDoc = await ctx.db.get(productId);
 
-    // Build a bounded set of Reddit search queries.
-    const queries: Array<{ q: string; kind: string }> = [];
-    const seen = new Set<string>();
-    const add = (q: string, kind: string) => {
-      const key = q.trim().toLowerCase();
-      if (key.length < 2 || seen.has(key)) return;
-      seen.add(key);
-      queries.push({ q: q.trim(), kind });
-    };
-    enrichment.ownKeywords.slice(0, MAX_OWN_KEYWORD_QUERIES).forEach((k) => add(k, "own"));
-    competitorTerms(enrichment.competitorDomains)
-      .slice(0, MAX_COMPETITOR_QUERIES)
-      .forEach((t) => add(t, "competitor"));
-    enrichment.topicTerms.slice(0, MAX_TOPIC_QUERIES).forEach((t) => add(t, "topic"));
+    // Monster demo: mock the Reddit discovery ONLY for monsterenergy.com — so the
+    // curated White Monster queue looks legit without live Reddit access. Every
+    // other product runs the real targeting + discovery pipeline below.
+    if (isMonsterDomain(productDoc?.domain ?? "")) {
+      await ctx.db.patch(productId, {
+        ...enrichment,
+        status: "discovering",
+        searchesTotal: MONSTER_OPP_COUNT,
+        searchesDone: 0,
+        discoveryError: undefined,
+      });
+      // Pace discovery like real Reddit search: an initial search round-trip,
+      // then results trickle in over ~15s with uneven gaps — not an instant dump
+      // that gives the mock away. Gaps are deterministic (no Math.random in a
+      // mutation) but irregular so it doesn't look metronomic.
+      let delay = 1600;
+      for (let i = 0; i < MONSTER_OPP_COUNT; i++) {
+        await ctx.scheduler.runAfter(delay, internal.mock.seedOpportunity, {
+          productId,
+          index: i,
+        });
+        delay += 700 + ((i * 7 + 3) % 13) * 85; // ~0.7–1.7s, uneven
+      }
+      await ctx.scheduler.runAfter(delay + 600, internal.mock.seedPosts, {
+        productId,
+      });
+      return;
+    }
 
+    // Real products: persist enrichment, then run the subreddit-targeting skill
+    // (Phase 1 angles → RAG match → Phase 2 tiering). targeting.saveTargets sets
+    // searchesTotal and fans out per-subreddit discovery once the list is known.
     await ctx.db.patch(productId, {
       ...enrichment,
-      status: queries.length ? "discovering" : "ready",
-      searchesTotal: queries.length,
+      status: "discovering",
+      searchesTotal: 0,
       searchesDone: 0,
       discoveryError: undefined,
     });
-
-    for (const { q, kind } of queries) {
-      await ctx.scheduler.runAfter(0, internal.discover.runSearch, {
-        productId,
-        query: q,
-        kind,
-      });
-    }
+    await ctx.scheduler.runAfter(0, internal.targeting.run, { productId });
   },
 });
 
@@ -159,5 +167,37 @@ export const incrementSearchDone = internalMutation({
       searchesDone: done,
       status: done >= p.searchesTotal ? "ready" : p.status,
     });
+  },
+});
+
+// Business-facing metrics ONLY — aggregate counts, never the drafts or schedule
+// (those live in the separate employee console). Powers the main dashboard.
+export const metrics = query({
+  args: { productId: v.id("products") },
+  handler: async (ctx, { productId }) => {
+    const opps = await ctx.db
+      .query("opportunities")
+      .withIndex("by_product", (q) => q.eq("productId", productId))
+      .collect();
+    const targets = await ctx.db
+      .query("targets")
+      .withIndex("by_product", (q) => q.eq("productId", productId))
+      .collect();
+    const byTier = [0, 0, 0, 0]; // tiers 1..4
+    for (const t of targets) {
+      if (t.tier >= 1 && t.tier <= 4) byTier[t.tier - 1]++;
+    }
+    return {
+      targets: targets.length,
+      byTier,
+      discovered: opps.length,
+      engage: opps.filter((o) => o.recommendation === "engage").length,
+      skip: opps.filter((o) => o.recommendation === "skip").length,
+      drafted: opps.filter((o) => o.pipelineStage === "drafted").length,
+      posted: opps.filter((o) => o.status === "completed").length,
+      avgScore: opps.length
+        ? Math.round(opps.reduce((a, o) => a + o.relevanceScore, 0) / opps.length)
+        : 0,
+    };
   },
 });

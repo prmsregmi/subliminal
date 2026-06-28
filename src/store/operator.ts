@@ -19,6 +19,6 @@ export const useOperator = create<OperatorState>()(
       setOperator: (operatorId, operatorName) => set({ operatorId, operatorName }),
       clear: () => set({ operatorId: null, operatorName: null }),
     }),
-    { name: "vibeseed-operator" },
+    { name: "subliminal-operator" },
   ),
 );

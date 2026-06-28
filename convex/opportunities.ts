@@ -9,6 +9,8 @@ import { v } from "convex/values";
 import { vSignals, vClassification, vResponseType } from "./schema";
 import { newToken } from "./lib/token";
 import { MAX_OPPORTUNITIES_PER_PRODUCT } from "./constants";
+import { computeSchedule } from "./lib/timing";
+import type { Doc } from "./_generated/dataModel";
 
 // ---- Internal: discovery writes opportunities here ----
 
@@ -26,6 +28,8 @@ export const upsert = internalMutation({
     numComments: v.number(),
     createdUtc: v.number(),
     discoveredVia: v.string(),
+    targetTier: v.optional(v.number()),
+    angle: v.optional(v.string()),
     signals: vSignals,
     baseScore: v.number(),
   },
@@ -143,5 +147,68 @@ export const requeue = mutation({
   args: { opportunityId: v.id("opportunities") },
   handler: async (ctx, { opportunityId }) => {
     await ctx.db.patch(opportunityId, { status: "queued" });
+  },
+});
+
+// Employee marks an opportunity as posted to Reddit — drops it off the queue.
+export const markPosted = mutation({
+  args: { opportunityId: v.id("opportunities") },
+  handler: async (ctx, { opportunityId }) => {
+    await ctx.db.patch(opportunityId, { status: "completed", completedAt: Date.now() });
+  },
+});
+
+// ---- Employee posting queue: WHAT to post + WHEN ----
+// Drafted, engage-recommended opportunities across all products, each laid out
+// on a mod-safe schedule by the timing algorithm. Powers /post-by-employees.
+export const employeeQueue = query({
+  args: {},
+  handler: async (ctx) => {
+    const opps = await ctx.db.query("opportunities").collect();
+    const candidates = opps.filter(
+      (o) =>
+        o.recommendation === "engage" &&
+        o.status !== "dismissed" &&
+        o.status !== "completed",
+    );
+
+    const withDrafts = (
+      await Promise.all(
+        candidates.map(async (o) => {
+          const draft = await ctx.db
+            .query("drafts")
+            .withIndex("by_opportunity", (q) => q.eq("opportunityId", o._id))
+            .order("desc")
+            .first();
+          return draft ? { o, draft } : null;
+        }),
+      )
+    ).filter((r): r is { o: Doc<"opportunities">; draft: Doc<"drafts"> } => r !== null);
+
+    const schedule = computeSchedule(
+      withDrafts.map(({ o }) => ({
+        id: o._id,
+        subreddit: o.subreddit,
+        score: o.relevanceScore,
+      })),
+      Date.now(),
+    );
+
+    const rows = await Promise.all(
+      withDrafts.map(async ({ o, draft }) => {
+        const product = await ctx.db.get(o.productId);
+        const slot = schedule.get(o._id);
+        return {
+          opportunity: o,
+          draft,
+          productName: product?.name || product?.domain || "",
+          scheduledFor: slot?.scheduledFor ?? null,
+          scheduleReason: slot?.reason ?? null,
+        };
+      }),
+    );
+    return rows.sort(
+      (a, b) => (a.scheduledFor ?? Infinity) - (b.scheduledFor ?? Infinity),
+    );
   },
 });

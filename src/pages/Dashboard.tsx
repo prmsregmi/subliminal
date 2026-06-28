@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "convex/react";
+import { Link } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { SubmitForm } from "@/components/SubmitForm";
 import { ProductRail } from "@/components/ProductRail";
 import { ProductPanel } from "@/components/ProductPanel";
-import { OpportunitiesTab } from "@/components/OpportunitiesTab";
-import { PostCreatorTab } from "@/components/PostCreatorTab";
 import { OperatorBar } from "@/components/OperatorBar";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { MessagesSquare, PenLine, Radio } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Radio, Users, Target, Search, ThumbsUp, ShieldX, PenLine, Send } from "lucide-react";
 
+// Business-facing dashboard: the landing page for a brand to start the pipeline
+// and watch METRICS only. What and when to post lives in the separate employee
+// console (/post-by-employees) — never here.
 export default function Dashboard() {
   const products = useQuery(api.products.list);
   const [activeId, setActiveId] = useState<Id<"products"> | null>(null);
@@ -36,22 +38,7 @@ export default function Dashboard() {
             {activeId ? (
               <>
                 <ProductPanel productId={activeId} />
-                <Tabs defaultValue="opps" className="w-full">
-                  <TabsList>
-                    <TabsTrigger value="opps" className="gap-1.5">
-                      <MessagesSquare className="size-3.5" /> Opportunities
-                    </TabsTrigger>
-                    <TabsTrigger value="posts" className="gap-1.5">
-                      <PenLine className="size-3.5" /> Post Creator
-                    </TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="opps" className="mt-4">
-                    <OpportunitiesTab productId={activeId} />
-                  </TabsContent>
-                  <TabsContent value="posts" className="mt-4">
-                    <PostCreatorTab productId={activeId} />
-                  </TabsContent>
-                </Tabs>
+                <Metrics productId={activeId} />
               </>
             ) : (
               <Welcome />
@@ -60,6 +47,48 @@ export default function Dashboard() {
         </div>
       </main>
     </div>
+  );
+}
+
+function Metrics({ productId }: { productId: Id<"products"> }) {
+  const m = useQuery(api.products.metrics, { productId });
+  if (!m) return <div className="text-sm text-muted-foreground">Loading metrics…</div>;
+
+  const tiles: Array<{ label: string; value: number | string; icon: typeof Target }> = [
+    { label: "Target subreddits", value: m.targets, icon: Target },
+    { label: "Threads discovered", value: m.discovered, icon: Search },
+    { label: "Worth engaging", value: m.engage, icon: ThumbsUp },
+    { label: "Skipped (BS-gate)", value: m.skip, icon: ShieldX },
+    { label: "Drafts ready", value: m.drafted, icon: PenLine },
+    { label: "Posted", value: m.posted, icon: Send },
+    { label: "Avg relevance", value: m.avgScore, icon: Target },
+  ];
+
+  return (
+    <Card className="p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="label-eyebrow">campaign metrics</span>
+        <span className="font-mono text-[11px] text-muted-foreground">
+          tiers — direct {m.byTier[0]} · competitor {m.byTier[1]} · indirect {m.byTier[2]} · far{" "}
+          {m.byTier[3]}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {tiles.map((t) => (
+          <div key={t.label} className="rounded-lg border border-border/60 bg-muted/20 p-3">
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <t.icon className="size-3.5" />
+              <span className="text-[11px]">{t.label}</span>
+            </div>
+            <div className="mt-1 font-mono text-2xl font-semibold tabular-nums">{t.value}</div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        What and when to post is handled by the posting team in the employee console — this view is
+        metrics only.
+      </p>
+    </Card>
   );
 }
 
@@ -73,13 +102,19 @@ function Header() {
             <span className="absolute size-4 rounded-full ring-1 ring-primary/40" />
           </span>
           <div className="leading-tight">
-            <div className="font-mono text-sm font-bold tracking-[0.16em]">VIBESEED</div>
+            <div className="font-mono text-sm font-bold tracking-[0.16em]">SUBLIMINAL</div>
             <div className="hidden text-[10px] text-muted-foreground sm:block">
-              honest reddit recommendation intelligence
+              subliminal reddit marketing intelligence
             </div>
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            to="/post-by-employees"
+            className="hidden items-center gap-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground sm:flex"
+          >
+            <Users className="size-3.5" /> employee console
+          </Link>
           <span className="hidden items-center gap-1.5 font-mono text-[11px] text-emerald-300 sm:flex">
             <Radio className="size-3.5 animate-pulse" /> live
           </span>
@@ -97,9 +132,10 @@ function Welcome() {
         Find where your product genuinely belongs on Reddit.
       </h1>
       <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
-        Submit a product URL. OrangeSlice enriches it into keywords and competitors, authenticated
-        Reddit search surfaces real threads, and the engagement algorithm scores each one — drafting
-        a disclosed, value-first comment only where it would actually be welcome.
+        Submit a product URL. SUBLIMINAL profiles it, matches it against a catalog of subreddits with
+        RAG, pulls what those communities are talking about, and surfaces the threads where a
+        disclosed, value-first comment would actually be welcome — with the posting handled by your
+        team in a separate console.
       </p>
     </div>
   );
