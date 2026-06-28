@@ -8,6 +8,7 @@ import {
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { callStructured } from "./lib/llm";
+import { CONTENT_SKILL } from "./lib/draft_skill";
 import { newToken } from "./lib/token";
 import { DEFAULT_DISCLOSURE } from "./constants";
 
@@ -102,7 +103,7 @@ export const run = internalAction({
 
       const r = await callStructured<PostResult>({
         role: "draft",
-        system: POST_SYSTEM,
+        system: `${CONTENT_SKILL}\n\n---\n\n${POST_SYSTEM}`,
         prompt,
         toolName: "write_post",
         toolDescription: "Write an original Reddit post.",

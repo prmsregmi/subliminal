@@ -2,6 +2,7 @@ import { internalAction, internalMutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { callStructured, resolveModel } from "./lib/llm";
+import { CONTENT_SKILL } from "./lib/draft_skill";
 import { CRITIC_SALESINESS_THRESHOLD, DEFAULT_DISCLOSURE } from "./constants";
 import type { Doc } from "./_generated/dataModel";
 
@@ -162,7 +163,7 @@ export const generate = internalAction({
 
       let draft = await callStructured<DraftResult>({
         role: "draft",
-        system: DRAFT_SYSTEM,
+        system: `${CONTENT_SKILL}\n\n---\n\n${DRAFT_SYSTEM}`,
         prompt: draftPrompt(product, opp, productName),
         toolName: "write_comment",
         toolDescription: "Write a helpful, disclosed Reddit comment.",
@@ -183,7 +184,7 @@ export const generate = internalAction({
       if (salesScore(critic) > CRITIC_SALESINESS_THRESHOLD) {
         draft = await callStructured<DraftResult>({
           role: "draft",
-          system: DRAFT_SYSTEM,
+          system: `${CONTENT_SKILL}\n\n---\n\n${DRAFT_SYSTEM}`,
           prompt: draftPrompt(product, opp, productName, String(critic.fixes || critic.verdict)),
           toolName: "write_comment",
           toolDescription: "Rewrite a helpful, disclosed Reddit comment to be less salesy.",

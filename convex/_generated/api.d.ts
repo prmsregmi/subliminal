@@ -16,6 +16,7 @@ import type * as drafts from "../drafts.js";
 import type * as enrich from "../enrich.js";
 import type * as lib_anthropic from "../lib/anthropic.js";
 import type * as lib_apify from "../lib/apify.js";
+import type * as lib_draft_skill from "../lib/draft_skill.js";
 import type * as lib_embeddings from "../lib/embeddings.js";
 import type * as lib_llm from "../lib/llm.js";
 import type * as lib_openai_llm from "../lib/openai_llm.js";
@@ -48,6 +49,7 @@ declare const fullApi: ApiFromModules<{
   enrich: typeof enrich;
   "lib/anthropic": typeof lib_anthropic;
   "lib/apify": typeof lib_apify;
+  "lib/draft_skill": typeof lib_draft_skill;
   "lib/embeddings": typeof lib_embeddings;
   "lib/llm": typeof lib_llm;
   "lib/openai_llm": typeof lib_openai_llm;
