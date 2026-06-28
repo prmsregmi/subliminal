@@ -21,7 +21,7 @@ export const MAX_TARGETS = 50; // tiered target subreddits per product
 
 // Engagement gate thresholds (the anti-"BS meter" core of the algorithm).
 export const SKIP_RISK_THRESHOLD = 0.7; // authenticityRisk above this => skip
-export const MIN_ENGAGE_SCORE = 35; // finalScore below this => skip
+export const MIN_ENGAGE_SCORE = 20; // finalScore below this => skip
 export const CRITIC_SALESINESS_THRESHOLD = 5; // critic > this => regenerate once
 
 // Scoring weights (sum to 100). This is OUR logic, not any API's.
@@ -46,14 +46,14 @@ export const LLM_MODELS = {
     draft: "claude-sonnet-4-6",
     critic: "claude-haiku-4-5",
   },
-  // Non-reasoning defaults that work with the small per-call token budgets below.
-  // Callable today but on a deprecation path (dated gpt-4o snapshot retires
-  // 2026-10). To move to the gpt-5.x frontier, override via OPENAI_MODEL_<ROLE>
-  // AND raise that role's maxTokens — gpt-5.x reasoning tokens share the budget.
+  // gpt-5.5 is a reasoning model: reasoning tokens count toward
+  // max_completion_tokens, so openai_llm.ts adds headroom over each call's output
+  // budget and sets reasoning_effort (default "low", env OPENAI_REASONING_EFFORT).
+  // Override a role's model without a deploy via OPENAI_MODEL_<ROLE>.
   openai: {
-    classify: "gpt-4o-mini",
-    draft: "gpt-4o",
-    critic: "gpt-4o-mini",
+    classify: "gpt-5.5",
+    draft: "gpt-5.5",
+    critic: "gpt-5.5",
   },
 } as const;
 

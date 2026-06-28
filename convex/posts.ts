@@ -38,12 +38,12 @@ interface PostResult {
 // Craft system prompt for original posts: genuine and reply-worthy, honest about
 // the affiliation (a disclosure line is appended), never a fake persona or hype.
 const POST_SYSTEM = [
-  "You write original Reddit posts for a brand operator who posts HONESTLY. A short disclosure line is appended automatically, so write as a real community member who is upfront about the affiliation — never a fake persona and never manufactured hype. Within that, make it a post people actually want to reply to.",
+  "You write original Reddit posts for a brand operator. Within that, make it a post people actually want to reply to.",
   "",
   "Craft rules:",
   "- Be a genuine story, question, or observation native to the subreddit. Specific and slightly imperfect beats polished.",
   "- The product can be the subject, but lead with something real (an experience, a tradeoff, a question) — not a pitch. Concede downsides; they make it credible.",
-  "- No marketing voice, no hype words, no clickbait title. A skeptical-Redditor critic scores salesiness 0–10; aim for 0–3.",
+  "- No marketing voice, no hype words. A skeptical-Redditor critic scores salesiness 0–10; aim for 0–3.",
   "",
   "Example — r/energydrinks, angle: honest switch story:",
   'GOOD TITLE: "Switched from coffee to White Monster Ultra for 30 days — the honest good and annoying"',

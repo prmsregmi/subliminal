@@ -1,228 +1,232 @@
 # SUBLIMINAL
 
-**Subliminal Reddit marketing intelligence.** Submit a product website. SUBLIMINAL
-profiles the brand, decomposes it into dozens of search angles, matches it with RAG
-against a catalog of ~1,800 subreddits, pulls what those communities are actually
-talking about, and surfaces the exact threads where a **disclosed, value-first**
-comment would be welcome — then hands a human posting team a schedule of *what* to
-post and *when*, spaced so Reddit's moderators never see a coordinated burst.
+**Subliminal is a hackathon demo showing how subliminal seeding could be automated
+across Reddit.** The idea is not to buy ads in the obvious category. It is to make
+a brand appear inside the problems, tools, comparisons, complaints, and decision
+moments that surround that category.
 
-The hard part of Reddit marketing isn't writing the comment. It's (1) finding the
-non-obvious communities where your product can surface as an organic detail rather
-than an ad, and (2) posting into them at a cadence that doesn't trip a mod's radar.
-SUBLIMINAL automates both.
+Paste a company website. SUBLIMINAL scrapes the site, runs 2 web searches for
+competitors and related tools, creates 20–40 concrete Reddit searches, matches them
+against ~1,771 subreddit descriptions, searches inside the best subreddits, scores
+real threads, skips bad fits, writes drafts, and builds a demo posting schedule.
 
-> **On "subliminal."** This means surfacing the *subliminal-fit* communities a naive
-> keyword search never returns — a recycling sub for an aluminum-canned drink, a
-> night-shift sub for caffeine — where the community's own topic leads and the
-> product is an incidental detail. It does **not** mean deception: every draft
-> carries a disclosure line, and the engagement gate actively **skips** any thread
-> where a mention would read as marketing. Honest content, non-obvious placement.
+The core idea is simple: direct keyword search finds the obvious subreddit.
+SUBLIMINAL also finds people asking for alternatives, complaining about competitors,
+trying to solve the same problem, buying related tools, dealing with downsides, or
+asking for recommendations. That is where a brand can enter a conversation before
+people are explicitly searching for it.
 
 ---
 
-## The pipeline (happy path)
+## The Pipeline
 
 ```
-1. PROFILE      products.submitProduct → enrich.run (OrangeSlice)
-                scrape site + 2 SERP searches → { ownKeywords, competitorDomains,
-                complementaryDomains, topicTerms }
+1. PROFILE      company domain → website scrape + 2 web searches
+                output: keywords, competitors, complements, topic terms
 
-2. CAST WIDE    targeting.run · Phase 1 (OrangeSlice LLM + subreddit-targeting skill)
-                decompose the product across ~14 dimensions (material, ritual, pain,
-                gifting, non-consumption alternatives, …) → 20–40 search angles
+2. EXPAND       company brief → 20–40 searches for use cases, alternatives, problems,
+                related tools, materials, buyers, and objections
 
-3. MATCH (RAG)  targeting.run · retrieval  (Convex vector search over the catalog)
-                embed each angle (OpenAI) → vectorSearch the subreddits table →
-                pooled candidate communities   [full-text fallback when no key]
+3. MATCH        each search → meaning-based search over subreddit descriptions
+                output: 8 matches/search, deduped into a pool capped at 150
 
-4. TIER         targeting.run · Phase 2 (OrangeSlice LLM + skill)
-                score the pool on postability/bridge/audience/activity → ~50 targets
-                tiered Direct / Competitor / Indirect / Far-stretch, each with angles
+4. SELECT       candidate communities → usefulness, fit, audience, activity scoring
+                output: up to 50 target subreddits, each with posting guidance
 
-5. DISCOVER     discover.runSubreddit  (Apify → Reddit API → mock)
-                search the product's keywords WITHIN each target subreddit, score
-                locally, write the top on-topic threads as opportunities
+5. DISCOVER     search company/topic terms inside every target subreddit; fetch up to
+                25 posts/subreddit and keep the best 6
 
-6. GATE + DRAFT classify.run + drafts.generate (Anthropic)
-                relevance + authenticity-risk; high risk → SKIP (no draft). Otherwise
-                a disclosed, tier-aware comment + a "skeptical Redditor" BS-critic
+6. DECIDE       thread relevance + risk that a reply would feel forced
+                output: skip, or a draft; max 30 opportunities/submitted site
 
-7. SCHEDULE     lib/timing.ts
-                lay every drafted opportunity on a mod-safe calendar: ≤4 posts/day,
-                ≥3-day per-subreddit cooldown, peak-hour windows, deterministic jitter
+7. SCHEDULE     approved threads → human-paced calendar
+                ≤4 posts/day, ≥3-day per-subreddit cooldown, peak windows, jitter
 
-8. TWO VIEWS    /                  business dashboard — metrics ONLY
-                /post-by-employees employee console — exactly WHAT and WHEN to post
+8. TWO VIEWS    /                  demo dashboard — metrics ONLY
+                /post-by-employees posting queue — exactly WHAT and WHEN to post
 ```
 
 Everything is live: both dashboards subscribe to Convex and update in real time.
 
 ---
 
-## Why each stage is hard (the complexity we handle)
+## Sponsor Tech Used
 
-- **Finding non-obvious communities.** A keyword search for "energy drink" returns
-  `r/energydrinks` and stops. The [`subreddit-targeting` skill](finding-matching-subreddit.md)
-  forces a *wide net first*: it decomposes the product into materials, rituals,
-  pains it solves, pains it causes, gifting contexts, and non-consumption
-  alternatives, then runs one RAG query per dimension. That's how `r/recycling`
-  surfaces for a canned drink and `r/nightshift` for caffeine.
-- **Semantic match, not lexical.** The ~1,800-subreddit catalog is embedded with
-  OpenAI `text-embedding-3-small` and queried by **Convex vector search**, so an
-  angle like "communities for staying awake on overnight shifts" finds the right sub
-  even when the words don't overlap. No embedding key? It degrades gracefully to
-  Convex full-text search.
-- **Tiering for postability.** Not every relevant sub is *postable* — many product
-  subs ban promo. Phase 2 scores each candidate on postability first and tiers them
-  Direct → Competitor → Indirect → Far-stretch, carrying 1–3 reusable *angle*
-  directions per sub (the correlation a human bridges back through).
-- **Resilient discovery.** For each target subreddit we run a **keyword search
-  scoped to that sub** via **Apify** (primary; the harshmaur actor) so the threads
-  are on-topic, not just recent — with automatic fallback to the **official Reddit
-  API** (`/r/<sub>/search`), then the bundled **mock** for the offline demo. Any
-  single source failing degrades to fewer opportunities, never a crash.
-- **The BS gate.** Reddit users have a ferocious BS meter. An Anthropic pass scores
-  each thread's *authenticity-risk*; health-scare or astroturf-suspicion threads are
-  gated to **skip** with no draft. Drafts that read salesy are regenerated once.
-- **Mod-safe timing.** Posting 50 comments the day they're drafted is how accounts
-  get banned. The timing algorithm spreads them: a campaign-wide daily cap, a
-  per-subreddit cooldown (the biggest "are you astroturfing?" tell), and peak-hour
-  windows with jitter so the cadence never looks metronomic.
+- **OrangeSlice** scrapes the submitted site, runs the competitor and
+related-tool searches, and powers the site-to-subreddit selection prompts.
+- **Convex** is the backend, database, scheduler, live query layer, and vector
+search engine. Submitted sites, target subreddits, discovered threads,
+drafts, queue status, and dashboard metrics all live there.
+- **OpenAI** creates the subreddit-description embeddings used for meaning-based
+matching, so a company search can find relevant communities even when the words
+do not match exactly.
 
 ---
 
-## Deep dive 1 — Finding the subreddits
+## Why Each Stage Is Hard
+
+- **Finding non-obvious communities.** Direct category search returns the obvious
+subreddit and misses people talking around the company/category. SUBLIMINAL searches for
+concrete connections: what the thing is made of, what it is used for, what it
+replaces, what problem it solves, what downside it creates, who buys it, and what
+people buy with it.
+- **Matching meaning, not exact words.** The ~1,800-subreddit catalog is embedded
+with `text-embedding-3-small` and searched by meaning. A search can match a
+subreddit even when the words do not overlap. Without `OPENAI_API_KEY`, the same
+flow falls back to full-text search.
+- **Choosing places where a reply belongs.** Not every relevant subreddit is useful.
+The system narrows a candidate pool capped at 150 down to at most 50 subreddits.
+It scores whether a reply could fit there, how closely the subreddit matches the
+company/category, whether the audience is right, and whether the community is
+active. Each target gets guidance for how direct the mention can be.
+- **Resilient discovery.** For each target subreddit we run a **keyword search
+scoped to that sub** so the threads are on-topic, not just recent. The source
+chain is Apify, then the Reddit API, then the bundled mock data for offline
+demos. A failed source means fewer opportunities, not a broken demo run.
+- **Rejecting bad threads.** Each thread receives a relevance score and a risk
+score. Medical-alarm threads, threads accusing brands of shilling, weak fits, and
+forced mentions become **skip** with no draft. Drafts that read promotional are
+rewritten once using the critique.
+- **Human-paced scheduling.** The queue is sorted by relevance and spread with a
+campaign-wide cap of 4 posts/day, a 3-day gap per subreddit, three daily time
+windows, and 0–22 minutes of deterministic jitter. The demo produces a calendar
+instead of a burst of generated text.
+
+---
+
+## Deep Dive 1 — Finding The Subreddits
 
 The catalog is ~1,771 subreddits (name + description, `data/subreddits.md`),
-imported into the `subreddits` table and embedded with OpenAI
-`text-embedding-3-small` (1536-d) in the `embedding` column, indexed by Convex's
-`vectorIndex("by_embedding")`. Matching a product to its communities runs in three
-moves (`convex/targeting.ts`, driven by `convex/lib/skill.ts`):
+imported into the `subreddits` table, embedded with `text-embedding-3-small`, and
+indexed by Convex vector search. Matching a submitted site to communities happens in
+three steps:
 
-**Phase 1 — Cast wide (query generation).** A naive search for the literal product
-returns the one obvious sub and nothing that carries a subliminal campaign. So the
-skill first decomposes the product across ~14 dimensions and writes 1–2 RAG queries
-per populated dimension — **20–40 angles total**:
+**Step 1 — Write many searches.** A search for the literal category returns the
+obvious communities and misses the useful ones nearby. SUBLIMINAL writes searches
+for the category, what it is made of, what problem it solves, what problem it can
+cause, who buys it, what people compare it with, what people buy alongside it, and
+what people use instead. The result is **20–40 searches** from a single website.
 
-> literal category · physical form & material · ingredients/components · the job it
-> does · use occasion/ritual · user identity/lifestyle · pain it solves · pain it
-> *causes* · adjacent purchases · gifting & relationship contexts · disposal/aftermath
-> · emotional/social state · demographic/cultural communities · **non-consumption
-> alternatives** (people who do the thing *instead* — your exact targets)
+**Step 2 — Search subreddit descriptions by meaning.** Each search is embedded and
+matched against subreddit descriptions. The system pulls the top `RAG_PER_ANGLE`
+(8) matches for each search, removes duplicates, and caps the candidate list at
+`MAX_CANDIDATE_POOL` (150). Without embeddings, the same flow uses full-text search.
 
-This is what pulls `r/recycling` into view for an aluminum-canned drink and
-`r/nightshift` for caffeine. The angles are generated by OrangeSlice's LLM
-(`generateObject`) with the Phase-1 skill as the system prompt and the enrichment
-brief (own keywords, competitors, complements, topic terms) as input.
+**Step 3 — Keep the subreddits where a reply can fit.** Each candidate subreddit
+is scored for how useful a reply would be, how closely the community matches the
+company/category, whether the audience is right, and whether the subreddit is active.
+The system keeps up to `MAX_TARGETS` (50) targets:
 
-**Retrieval — RAG over the catalog.** Each angle is embedded (one batched OpenAI
-call) and run through `ctx.vectorSearch("subreddits", "by_embedding", …)` for the
-top `RAG_PER_ANGLE` (8) communities; results are pooled and deduped by name into a
-candidate set capped at `MAX_CANDIDATE_POOL` (150). With no `OPENAI_API_KEY`, this
-path swaps to Convex full-text search (`withSearchIndex("search_description")`) over
-the descriptions — lexical, but dependency-free.
 
-**Phase 2 — Narrow (score, tier, select).** The candidate pool (names + descriptions)
-goes back to the LLM with the Phase-2 skill. Each candidate is scored on
-**postability** (can a human post organically here without it reading as spam? — the
-binding constraint), **bridge strength**, **audience overlap**, and **activity**,
-then assigned to the highest tier it honestly fits, ~`MAX_TARGETS` (50) total:
+| Level | Name           | What it is                                                             | How the brand appears later                                    |
+| ----- | -------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 1     | **Direct**     | the brand's own category/sub                                           | a real mention, but promo-sensitive                            |
+| 2     | **Competitor** | rival & substitute communities                                         | comparison angle                                               |
+| 3     | **Indirect**   | communities about use cases, problems, materials, or related purchases | the subreddit topic comes first; the brand is a small detail   |
+| 4     | **Loose**      | weak but possible matches                                              | at most a passing aside                                        |
 
-| Tier | Name | What it is | How the product appears later |
-|---|---|---|---|
-| 1 | **Direct** | the product's own category/sub | a real mention, but promo-sensitive |
-| 2 | **Competitor** | rival & substitute communities | an honest alternative; concede their strengths |
-| 3 | **Indirect** | one–two hops out (materials, rituals, pains, gifting) — *the heart of the campaign* | an incidental detail; the community's topic leads |
-| 4 | **Far-stretch** | deliberately loose, lateral ties | at most a passing aside |
 
-Each pick carries 1–3 **angle directions** — reusable correlations (e.g. "Monster
-cans are aluminum → frame around collecting/recycling cans in volume"), not finished
-posts. Picks are validated against the retrieved pool (no hallucinated subs), saved
-to the `targets` table, and each one fans out a discovery job.
+Each target carries 1–3 short notes explaining how the brand relates to that
+subreddit. These are not finished posts. Picks are validated against the retrieved
+pool, saved to the `targets` table, and each target starts its own discovery job.
 
 ---
 
-## Deep dive 2 — The posting algorithm (what & when, to seem human)
+## Deep Dive 2 — The Posting Algorithm
 
-Once discovery writes opportunities, two algorithms decide **what** to say and
-**when** to say it so the activity reads as a real person, not a campaign.
+Once discovery finds threads, the system decides **what** should be drafted and
+**when** it should appear in the execution queue. The demo still keeps a human
+review step between generated text and any real-world action.
 
 ### What to post
 
-1. **Local relevance signals** (`lib/scoring.ts`, deterministic, transparent):
-   keyword overlap (title match counts double a body match), competitor mention,
-   recency (exponential decay, ~72h half-life), engagement (log-scaled upvotes +
-   comments, with a penalty for giant threads where a new comment gets buried), and
-   subreddit fit — blended by fixed `WEIGHTS` (sum 100) into a `baseScore` 0–100.
-2. **Semantic + risk pass** (`classify.ts`, Anthropic): assigns a classification, a
-   0–100 `semanticRelevance`, a 0–1 **authenticity-risk**, and a response type. Final
-   score = `0.45·base + 0.55·semantic`.
-3. **The skip gate** — the anti-BS core. An opportunity is **gated to `skip` (no
-   draft)** if `authenticity-risk > 0.70` **or** final score `< 35` **or** the model
-   itself returns `skip`. Health-scare ("ER", "palpitations") and
-   astroturf-suspicion threads are exactly what this kills — any product mention
-   there confirms the suspicion.
-4. **Tier-aware drafting** (`drafts.ts`): the draft prompt is conditioned on the
-   target tier (`intentHint`) — *direct* tolerates a real mention, *competitor* must
-   concede the rival's strengths, *indirect* keeps the product an incidental detail,
-   *far-stretch* allows only an aside — plus the subreddit's bridge **angle**, so the
-   comment talks about the community's native topic first.
-5. **Voice rules** (`DRAFT_SYSTEM`): answer the real question in sentence one; sound
-   like a member (plain, lowercase-casual, **no** hype words — game-changer, elevate,
-   unlock, supercharge); mention the product once as honest first-hand experience;
-   concede real flaws; own the bias up front. 2–4 sentences.
-6. **BS-critic loop**: a "jaded, skeptical Redditor" model scores the draft's
-   salesiness 0–10. Above `CRITIC_SALESINESS_THRESHOLD` (5) it regenerates **once**
-   with the critique; a missing/garbage score is treated as worst-case (10) so a
-   bad draft never slips through. A **disclosure line is always appended** — the
-   honesty guarantee that makes owning the bias the winning move.
+1. **Local relevance score.** The first score uses measurable thread data: keyword
+  overlap, competitor mentions, age, upvotes, comment count, and subreddit fit.
+   Title matches count more than body matches. Recent threads score higher. Huge
+   threads are penalized because a new reply is less visible there.
+2. **Meaning and risk check.** A second pass reads what the thread is actually
+  asking, how closely it matches the brand/category, what kind of reply would fit,
+   and how likely a mention is to feel forced.
+3. **Weighted final score.** The final relevance score blends the deterministic
+  evidence with the meaning check. Local signals keep the system grounded in
+   thread data; the meaning check catches relevant threads that keyword matching
+   misses.
+4. **Skip gate.** An opportunity receives no draft when risk is above `0.70`, final
+  relevance is below `35`, or the recommended response is `skip`. Medical-alarm
+   threads, threads accusing brands of shilling, weak fits, and forced mentions
+   stop here.
+5. **Drafting rules by subreddit type.** Direct communities allow a real mention,
+  competitor communities use comparison, indirect communities keep the brand
+   incidental, and loose matches allow only a passing aside.
+6. **Voice constraints.** The draft must answer the real thread first, avoid obvious
+  ad language, mention the brand once at most, and fit in 2–4 sentences.
+7. **Skeptical-reader pass.** A critic scores salesiness from 0–10. Scores above
+  `CRITIC_SALESINESS_THRESHOLD` (5) trigger one rewrite using the critique. Missing
+   or invalid critic output is treated as worst-case, so unscored drafts do not pass.
 
 ### When to post
 
-The schedule (`lib/timing.ts`, `computeSchedule`) is **pure and deterministic** — it
-takes `now` and uses no `Date.now()`/randomness internally, so the same queue always
-produces the same calendar. It enforces the three things a moderator watches for:
+The scheduler takes drafted threads as `{ id, subreddit, score }` and returns a
+calendar with `{ scheduledFor, reason }`. It is pure and deterministic: `now` is
+passed in, no hidden current time is read, and no random number is used. The same
+queue always produces the same calendar, so Convex live updates can re-render the
+posting queue without reshuffling assignments.
 
-| Rule | Constant | Why it matters |
-|---|---|---|
-| **Daily cap** | `MAX_POSTS_PER_DAY = 4` (campaign-wide) | activity never looks like a coordinated burst |
-| **Per-sub cooldown** | `SUB_COOLDOWN_DAYS = 3` | repeated posting in one sub is the single biggest "are you astroturfing?" tell |
-| **Peak windows + jitter** | `PEAK_HOURS = [8, 12, 19]` local, 0–22 min deterministic jitter | posts land when threads are actually seen, and never on a metronomic clock |
+This is not a simple delay. It is a bounded search over future posting slots, built
+around the patterns Reddit systems and moderators notice: same-day bursts, repeated
+activity in one subreddit, identical timestamps, and low-priority comments posted
+before better ones.
 
-**Mechanics:** opportunities are sorted by relevance (best get the earliest slots). A
-generator yields candidate slots in chronological order — the peak hours of each day,
-future-only, each nudged by an index-based jitter. For each opportunity the algorithm
-walks the slots and takes the **earliest one that is unused, under the daily cap, and
-past the per-subreddit cooldown**, then records the slot with a human-readable reason
-(`"r/X: peak window, ≥3d after the last post here, ≤4/day campaign-wide"`). The search
-is bounded to a one-year horizon. The employee console renders the queue sorted by
-this scheduled time — so a human just works top to bottom, posting at a human pace.
+
+| Rule                    | Constant                                     | Why it matters                                                          |
+| ----------------------- | -------------------------------------------- | ----------------------------------------------------------------------- |
+| **Daily cap**           | `MAX_POSTS_PER_DAY = 4`                      | a 30-thread queue cannot become 30 same-day actions                     |
+| **Per-subreddit gap**   | `SUB_COOLDOWN_DAYS = 3`                      | the same subreddit cannot be touched again for at least 3 days          |
+| **Useful time windows** | `PEAK_HOURS = [8, 12, 19]` + 0–22 min jitter | work lands during normal attention windows without identical timestamps |
+
+
+**Mechanics:**
+
+1. Sort every drafted thread by relevance score, highest first. The best threads
+  reserve the earliest valid slots.
+2. Generate candidate slots for the next 365 days. Each day emits 8am, 12pm, and
+  7pm local slots. Past slots are skipped.
+3. Add stable jitter to every slot with `((n * 17 + 11) % 23)` minutes. The offset
+  is always 0–22 minutes, but it is reproducible, so the queue looks natural
+   without becoming random or impossible to audit.
+4. For each thread, walk candidate slots until one passes all checks: the timestamp
+  is unused, the day has fewer than 4 scheduled posts, and the same subreddit has
+   not been scheduled in the previous 3 days.
+5. Commit the slot by updating three pieces of state: used timestamps, post count
+  for that day, and last scheduled time for that subreddit.
+6. Store a human-readable reason, e.g. `r/X: peak window, >=3d after the last post
+  here, <=4/day campaign-wide`.
+
+The result is a calendar that is stable, explainable, and built from the same
+constraints a posting lead would enforce manually. The queue renders in scheduled
+order, so the demo has a concrete execution plan instead of loose generated text.
 
 ---
 
-## Two dashboards, deliberately separated
+## Two Views, Deliberately Separated
 
-- **`/` — Business dashboard.** The landing page a brand uses to start the pipeline
-  and watch **metrics only**: target subreddits by tier, threads discovered, how many
-  are worth engaging vs. gated, drafts ready, posted, average relevance. It never
-  shows *what* or *when* to post.
-- **`/post-by-employees` — Employee console.** The internal queue for the posting
-  team: every drafted, engage-recommended opportunity, sorted by its scheduled time,
-  with the thread, the disclosed draft (copy-to-clipboard), the tier/angle, and the
-  action link to post under a real account. This is where *what + when* lives.
+- **`/` — Demo dashboard.** Metrics only: target subreddits by level, threads
+discovered, worth replying to vs. skipped, drafts ready, posted, and average
+relevance. It never shows *what* or *when* to post.
+- **`/post-by-employees` — Posting queue.** The execution view: every drafted,
+engage-recommended opportunity, sorted by scheduled time, with the thread, draft,
+level/guidance, and action link. This is where *what + when* lives.
 
 ---
 
 ## Architecture
 
-- **Convex is the entire backend + database + scheduler + live subscriptions.** All
-  outbound API calls (OrangeSlice, OpenAI, Apify, Reddit, Anthropic) run inside
-  Convex actions; their keys live in the deployment env, never in the browser.
-- **RAG** uses Convex's native `vectorIndex` (`subreddits.by_embedding`, 1536-d) with
-  a `searchIndex` (`search_description`) fallback — no external vector DB.
-- **The targeting skill is embedded** (`convex/lib/skill.ts`) as the system prompt for
-  both LLM phases, so the model "uses the skill" deterministically.
+- **Convex is the entire backend + database + scheduler + live subscriptions.** All outbound API calls (OrangeSlice, OpenAI, Apify, Reddit, Anthropic) run inside Convex actions; their keys live in the deployment env.
+- **Subreddit matching** uses Convex's native `vectorIndex`
+(`subreddits.by_embedding`, 1536-d) with a `searchIndex` fallback — no external
+vector database.
+- **The subreddit-search instructions** live in `convex/lib/skill.ts` and are used
+by both selection passes, so target generation follows the same method every run.
 
 **Stack:** Convex · React 19 + Vite + TypeScript · Tailwind v4 + shadcn/ui ·
 react-router · Zustand. OrangeSlice (enrichment + LLM) · OpenAI (embeddings) ·
@@ -236,8 +240,8 @@ Apify (Reddit scraping) · Reddit OAuth · Anthropic (classify/draft/critic).
 
 - Node 20+ and `pnpm`
 - An **OrangeSlice** login: `npx orangeslice login` (stores an `osk_` key; `pnpm run secrets` reads it)
-- An **Anthropic** API key — <https://console.anthropic.com>
-- *Optional but recommended:* an **Apify** token (<https://apify.com> — primary discovery), an **OpenAI** key (semantic RAG), and a **Reddit** "web app" (discovery fallback, <https://www.reddit.com/prefs/apps>)
+- An **Anthropic** API key — [https://console.anthropic.com](https://console.anthropic.com)
+- *Optional but recommended:* an **Apify** token ([https://apify.com](https://apify.com) — primary discovery), an **OpenAI** key (meaning-based subreddit matching), and a **Reddit** "web app" (discovery fallback, [https://www.reddit.com/prefs/apps](https://www.reddit.com/prefs/apps))
 
 ### 2. Install & configure
 
@@ -252,7 +256,7 @@ pnpm run secrets               # pushes all keys to the Convex deployment
 
 ```bash
 pnpm run import:subreddits                 # parses data/subreddits.md → subreddits table (~1,771 rows)
-npx convex run subreddits:backfillEmbeddings   # only if OPENAI_API_KEY is set — enables semantic RAG
+npx convex run subreddits:backfillEmbeddings   # only if OPENAI_API_KEY is set — enables meaning-based matching
 ```
 
 Without the embedding backfill, matching still works via full-text search.
@@ -272,16 +276,18 @@ The posting queue builds at `/post-by-employees`.
 
 All secrets live **server-side in the Convex deployment**. The browser only sees `VITE_CONVEX_URL`.
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `ORANGESLICE_API_KEY` | yes | Enrichment + both targeting LLM phases (auto-read from the OrangeSlice CLI) |
-| `ANTHROPIC_API_KEY` | yes | Classification, draft generation, BS-critic |
-| `APIFY_TOKEN` | recommended | Primary discovery: keyword search within target subreddits (harshmaur actor) |
-| `OPENAI_API_KEY` | recommended | Embeddings for semantic RAG; without it, matching falls back to full-text |
-| `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` | optional | Discovery fallback when Apify is unset/fails (`/r/<sub>/new`) |
-| `REDDIT_USER_AGENT` | optional | Reddit UA string (a default is used if unset) |
-| `APIFY_REDDIT_ACTOR` | optional | Override the Apify actor (default `harshmaur~reddit-scraper`) |
-| `CONVEX_DEPLOYMENT` / `VITE_CONVEX_URL` | auto | Written to `.env.local` by `convex dev` |
+
+| Variable                                    | Required    | Purpose                                                                                       |
+| ------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------- |
+| `ORANGESLICE_API_KEY`                       | yes         | Enrichment + both targeting LLM phases (auto-read from the OrangeSlice CLI)                   |
+| `ANTHROPIC_API_KEY`                         | yes         | Classification, draft generation, promotional-language critic                                 |
+| `APIFY_TOKEN`                               | recommended | Primary discovery: keyword search within target subreddits (harshmaur actor)                  |
+| `OPENAI_API_KEY`                            | recommended | Embeddings for meaning-based subreddit matching; without it, matching falls back to full-text |
+| `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` | optional    | Discovery fallback when Apify is unset/fails (`/r/<sub>/new`)                                 |
+| `REDDIT_USER_AGENT`                         | optional    | Reddit UA string (a default is used if unset)                                                 |
+| `APIFY_REDDIT_ACTOR`                        | optional    | Override the Apify actor (default `harshmaur~reddit-scraper`)                                 |
+| `CONVEX_DEPLOYMENT` / `VITE_CONVEX_URL`     | auto        | Written to `.env.local` by `convex dev`                                                       |
+
 
 Inspect what's set: `npx convex env list`.
 
@@ -294,11 +300,11 @@ convex/
   schema.ts          tables (products, opportunities, drafts, targets, subreddits, …) + validators
   products.ts        submit + enrichment persistence + business metrics
   enrich.ts          OrangeSlice profiling (competitors + complements)
-  targeting.ts       the skill: Phase-1 angles → RAG retrieval → Phase-2 tiering
-  subreddits.ts      RAG retrieval helpers + embedding backfill
+  targeting.ts       search generation → subreddit matching → target selection
+  subreddits.ts      subreddit search helpers + embedding backfill
   discover.ts        subreddit-latest discovery (Apify → Reddit → mock)
   classify.ts        Anthropic scoring/classification + the skip gate
-  drafts.ts          Anthropic draft + tier-aware positioning + BS-critic
+  drafts.ts          Anthropic draft + subreddit-type positioning + critic
   opportunities.ts   queue mutations/queries + the scheduled employee queue
   posts.ts           original-post creation mode
   lib/
@@ -306,7 +312,7 @@ convex/
     embeddings.ts    OpenAI embeddings client (optional)
     apify.ts         Apify keyword-search-in-subreddit client (primary discovery)
     reddit.ts        Reddit OAuth client (search + /new fallback)
-    timing.ts        the mod-safe when-to-post scheduler
+    timing.ts        human-paced posting scheduler
     orangeslice.ts   enrichment + LLM client
     anthropic.ts     classify/draft/critic client
     scoring.ts       local deterministic relevance signals
@@ -314,9 +320,9 @@ scripts/
   import-subreddits.mjs   parses the catalog markdown → subreddits table
   setup-env.mjs           pushes secrets to the Convex deployment
 src/
-  pages/Dashboard.tsx     business dashboard — metrics only
-  pages/EmployeePage.tsx  employee console — what + when to post (/post-by-employees)
-  pages/ActionPage.tsx    operator posting workflow (/action/:token)
+  pages/Dashboard.tsx     demo dashboard — metrics only
+  pages/EmployeePage.tsx  posting queue — what + when to post (/post-by-employees)
+  pages/ActionPage.tsx    posting workflow (/action/:token)
 data/
   subreddits.md           the subreddit catalog (name + description)
 finding-matching-subreddit.md   the subreddit-targeting skill

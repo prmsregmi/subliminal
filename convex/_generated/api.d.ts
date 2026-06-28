@@ -24,6 +24,7 @@ import type * as lib_orangeslice from "../lib/orangeslice.js";
 import type * as lib_reddit from "../lib/reddit.js";
 import type * as lib_scoring from "../lib/scoring.js";
 import type * as lib_skill from "../lib/skill.js";
+import type * as lib_skill_text from "../lib/skill_text.js";
 import type * as lib_timing from "../lib/timing.js";
 import type * as lib_token from "../lib/token.js";
 import type * as mock from "../mock.js";
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   "lib/reddit": typeof lib_reddit;
   "lib/scoring": typeof lib_scoring;
   "lib/skill": typeof lib_skill;
+  "lib/skill_text": typeof lib_skill_text;
   "lib/timing": typeof lib_timing;
   "lib/token": typeof lib_token;
   mock: typeof mock;

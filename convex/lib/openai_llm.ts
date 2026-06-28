@@ -7,6 +7,14 @@ import type { StructuredCallOpts } from "./anthropic";
 
 const API_URL = "https://api.openai.com/v1/chat/completions";
 
+// gpt-5.x / o-series are reasoning models: their reasoning tokens count toward
+// max_completion_tokens on Chat Completions, so add headroom over the caller's
+// output budget (a cap only bills tokens actually generated) and bound reasoning
+// cost with reasoning_effort — "low" for these small structured calls, override
+// via OPENAI_REASONING_EFFORT.
+const REASONING_MODEL = /^(gpt-5|o\d)/i;
+const REASONING_HEADROOM = 8000;
+
 function apiKey(): string {
   const k = process.env.OPENAI_API_KEY;
   if (!k) {
@@ -27,9 +35,11 @@ export async function callStructured<T = Record<string, unknown>>(
   if (opts.system) messages.push({ role: "system", content: opts.system });
   messages.push({ role: "user", content: opts.prompt });
 
+  const reasoning = REASONING_MODEL.test(opts.model);
   const body = {
     model: opts.model,
-    max_completion_tokens: opts.maxTokens ?? 1024,
+    max_completion_tokens: (opts.maxTokens ?? 1024) + (reasoning ? REASONING_HEADROOM : 0),
+    ...(reasoning ? { reasoning_effort: process.env.OPENAI_REASONING_EFFORT ?? "low" } : {}),
     messages,
     tools: [
       {
