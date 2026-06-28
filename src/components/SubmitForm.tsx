@@ -1,0 +1,54 @@
+import { useState } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Loader2, Radar } from "lucide-react";
+import { toast } from "sonner";
+import type { Id } from "../../convex/_generated/dataModel";
+
+export function SubmitForm({ onCreated }: { onCreated: (id: Id<"products">) => void }) {
+  const submit = useMutation(api.products.submitProduct);
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function go() {
+    const v = url.trim();
+    if (!v) return;
+    setBusy(true);
+    try {
+      const id = await submit({ url: v });
+      setUrl("");
+      onCreated(id);
+      toast.success("Submitted — enriching with OrangeSlice");
+    } catch {
+      toast.error("Failed to submit URL");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void go();
+      }}
+      className="flex w-full items-center gap-2"
+    >
+      <div className="relative flex-1">
+        <Radar className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="your-product.com — paste a product website to find seeding opportunities"
+          className="h-11 pl-9 font-mono text-sm"
+        />
+      </div>
+      <Button type="submit" size="lg" disabled={busy} className="h-11 gap-2">
+        {busy ? <Loader2 className="size-4 animate-spin" /> : <Radar className="size-4" />}
+        Analyze
+      </Button>
+    </form>
+  );
+}
