@@ -105,7 +105,7 @@ export function OpportunityCard({
           </span>
         )}
         {opp.signals.matchedCompetitors.length > 0 && (
-          <span className="font-mono text-[11px] text-amber-300/80">
+          <span className="font-mono text-[11px] text-amber-700">
             mentions: {opp.signals.matchedCompetitors.join(", ")}
           </span>
         )}
@@ -185,7 +185,7 @@ export function OpportunityCard({
             <Button
               size="icon"
               variant="ghost"
-              className="size-8 text-muted-foreground hover:text-rose-300"
+              className="size-8 text-muted-foreground hover:text-rose-700"
               title="Dismiss"
               onClick={() => dismiss({ opportunityId: opp._id })}
             >

@@ -22,7 +22,7 @@ function base64(input: string): string {
 }
 
 function userAgent(): string {
-  return process.env.REDDIT_USER_AGENT || "web:vibeseed:v0.1.0 (by /u/vibeseed_app)";
+  return process.env.REDDIT_USER_AGENT || "web:subliminal:v0.1.0 (by /u/subliminal_app)";
 }
 
 // Whether the deployment has Reddit app-only OAuth credentials configured.

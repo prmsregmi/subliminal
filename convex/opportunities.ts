@@ -8,9 +8,13 @@ import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { vSignals, vClassification, vResponseType } from "./schema";
 import { newToken } from "./lib/token";
-import { MAX_OPPORTUNITIES_PER_PRODUCT } from "./constants";
+import { DEFAULT_DISCLOSURE, MAX_OPPORTUNITIES_PER_PRODUCT } from "./constants";
 import { computeSchedule } from "./lib/timing";
 import type { Doc } from "./_generated/dataModel";
+
+function isRedditThreadUrl(url: string): boolean {
+  return /reddit\.com\/r\/[^/]+\/comments\/[^/?#]+/i.test(url);
+}
 
 // ---- Internal: discovery writes opportunities here ----
 
@@ -168,6 +172,7 @@ export const employeeQueue = query({
     const candidates = opps.filter(
       (o) =>
         o.recommendation === "engage" &&
+        isRedditThreadUrl(o.url) &&
         o.status !== "dismissed" &&
         o.status !== "completed",
     );
@@ -185,20 +190,35 @@ export const employeeQueue = query({
       )
     ).filter((r): r is { o: Doc<"opportunities">; draft: Doc<"drafts"> } => r !== null);
 
+    const posts = (await ctx.db.query("campaignPosts").collect()).filter(
+      (post) =>
+        post.pipelineStage === "ready" &&
+        post.status !== "dismissed" &&
+        post.status !== "completed",
+    );
+
     const schedule = computeSchedule(
-      withDrafts.map(({ o }) => ({
-        id: o._id,
-        subreddit: o.subreddit,
-        score: o.relevanceScore,
-      })),
+      [
+        ...withDrafts.map(({ o }) => ({
+          id: o._id,
+          subreddit: o.subreddit,
+          score: o.relevanceScore,
+        })),
+        ...posts.map((post) => ({
+          id: post._id,
+          subreddit: post.subreddit,
+          score: Math.max(0, 100 - (post.criticScore ?? 5) * 10),
+        })),
+      ],
       Date.now(),
     );
 
-    const rows = await Promise.all(
+    const commentRows = await Promise.all(
       withDrafts.map(async ({ o, draft }) => {
         const product = await ctx.db.get(o.productId);
         const slot = schedule.get(o._id);
         return {
+          kind: "comment" as const,
           opportunity: o,
           draft,
           productName: product?.name || product?.domain || "",
@@ -207,6 +227,27 @@ export const employeeQueue = query({
         };
       }),
     );
+
+    const postRows = await Promise.all(
+      posts.map(async (post) => {
+        const product = await ctx.db.get(post.productId);
+        const productName = product?.name || product?.domain || "";
+        const disclosureLine =
+          post.disclosureLine ||
+          DEFAULT_DISCLOSURE.replace(/\{\{product\}\}/g, productName || "this product");
+        const slot = schedule.get(post._id);
+        return {
+          kind: "post" as const,
+          post,
+          disclosureLine,
+          productName,
+          scheduledFor: slot?.scheduledFor ?? null,
+          scheduleReason: slot?.reason ?? null,
+        };
+      }),
+    );
+
+    const rows = [...commentRows, ...postRows];
     return rows.sort(
       (a, b) => (a.scheduledFor ?? Infinity) - (b.scheduledFor ?? Infinity),
     );

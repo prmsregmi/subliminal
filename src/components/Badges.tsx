@@ -51,7 +51,7 @@ export function StatusBadge({ value }: { value: WorkflowStatus }) {
 export function RecommendationBadge({ value }: { value?: "engage" | "skip" | null }) {
   if (value === "engage")
     return (
-      <Pill className="text-emerald-300 bg-emerald-500/10 border-emerald-500/30">
+      <Pill className="text-emerald-700 bg-emerald-100 border-emerald-200">
         <Sparkles className="size-3" /> engage
       </Pill>
     );
